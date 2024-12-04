@@ -27,9 +27,8 @@ const segments = [
 const Chat = ({ initialChatId }: ChatProps) => {
   const router = useRouter()
   const [chatId, setChatId] = useState<string | null>(initialChatId)
-  const { messages, input, handleInputChange, handleSubmit, setMessages } = useChat({
-    api: '/api/chat',
-  })
+  const [messages, setMessages] = useState<any[]>([])
+  const [input, setInput] = useState('')
   const [selectedTab, setSelectedTab] = useState('all')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const { theme, setTheme } = useTheme()
@@ -70,6 +69,61 @@ const Chat = ({ initialChatId }: ChatProps) => {
 
   const handleSegmentSelect = (segment: string) => {
     setSelectedSegment(segment)
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value)
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+
+    // Add user message to messages
+    const userMessage = { id: uuidv4(), role: 'user', content: input }
+    setMessages(prevMessages => [...prevMessages, userMessage])
+    setInput('')
+
+    // Fetch response from API
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messages: [...messages, userMessage] }),
+      })
+
+      if (!response.ok) {
+        console.error('Failed to fetch response')
+        return
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let result = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        result += decoder.decode(value, { stream: true })
+        setMessages(prevMessages => {
+          const lastMessage = prevMessages[prevMessages.length - 1]
+          if (lastMessage.role === 'assistant') {
+            return [
+              ...prevMessages.slice(0, -1),
+              { ...lastMessage, content: lastMessage.content + result },
+            ]
+          } else {
+            return [
+              ...prevMessages,
+              { id: uuidv4(), role: 'assistant', content: result },
+            ]
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching response:', error)
+    }
   }
 
   return (
@@ -182,4 +236,3 @@ const Chat = ({ initialChatId }: ChatProps) => {
 }
 
 export default Chat
-
